@@ -14,6 +14,10 @@ def run_conversion(
     bg_color,
     apply_resizing,
     max_side_length,
+    gaussian_blur_ksize,
+    add_stroke,
+    stroke_color,
+    stroke_width,
 ):
     """
     画像をSVGに変換する処理を実行する関数。
@@ -30,6 +34,16 @@ def run_conversion(
     except ValueError:
         print(f"エラー: 無効な背景色形式 '{bg_color}'。'R,G,B'形式を使用してください。")
         return False
+    
+    # ストローク色の解析
+    stroke_color_rgb = None
+    if add_stroke:
+        try:
+            sr, sg, sb = map(int, stroke_color.split(","))
+            stroke_color_rgb = (sr, sg, sb)
+        except ValueError:
+            print(f"エラー: 無効なストローク色形式 '{stroke_color}'。'R,G,B'形式を使用してください。")
+            return False
 
     if not os.path.exists(input_path):
         print(f"エラー: 入力画像ファイル '{input_path}' が見つかりません。")
@@ -41,8 +55,16 @@ def run_conversion(
         print(
             f"警告: median_blur_ksizeは奇数である必要があります。{median_blur_ksize} に調整しました。"
         )
+    
+    # gaussian_blur_ksizeが偶数で0でない場合は奇数に調整
+    if gaussian_blur_ksize % 2 == 0 and gaussian_blur_ksize != 0:
+        gaussian_blur_ksize += 1
+        print(
+            f"警告: gaussian_blur_ksizeは奇数である必要があります。{gaussian_blur_ksize} に調整しました。"
+        )
 
-    print(f"画像処理モードで '{input_path}' を '{output_path}' に変換しています...")
+
+    print(f"画像処理で '{input_path}' を '{output_path}' に変換しています...")
     convert.png_color_to_svg_high_fidelity(
         image_path=input_path,
         output_path=output_path,
@@ -54,6 +76,10 @@ def run_conversion(
         dilate_iterations=dilate_iterations,
         apply_resizing=apply_resizing,
         max_side_length=max_side_length,
+        gaussian_blur_ksize=gaussian_blur_ksize,
+        add_stroke=add_stroke,
+        stroke_color=stroke_color_rgb,
+        stroke_width=stroke_width,
     )
     return True
 
@@ -84,6 +110,12 @@ def main():
         help="メディアンブラーのカーネルサイズを指定します (奇数のみ)。0に設定するとブラーを適用しません。 (デフォルト: 5)",
     )
     parser.add_argument(
+        "--gaussian_blur_ksize",
+        type=int,
+        default=0,
+        help="ガウシアンブラーのカーネルサイズを指定します (奇数のみ)。0に設定するとブラーを適用しません。 (デフォルト: 0)",
+    )
+    parser.add_argument(
         "--dilate_iterations",
         type=int,
         default=1,
@@ -104,15 +136,30 @@ def main():
         help="透明な領域の背景色をRGB形式で指定します ('R,G,B') (デフォルト: '255,255,255')",
     )
 
-    # 画像縮小オプションを追加
+    # 画像サイズ調整オプションを更新
     parser.add_argument(
-        "--apply_resizing", action="store_true", help="処理前に画像を縮小します。"
+        "--apply_resizing", action="store_true", help="処理前に画像のサイズを調整します。"
     )
     parser.add_argument(
         "--max_side_length",
         type=int,
         default=1024,
-        help="画像を縮小する場合の最大辺の長さ (px)。アスペクト比は維持されます。 (デフォルト: 1024)",
+        help="調整後の画像の最も長い辺の最大ピクセル数を指定します。アスペクト比は維持されます。(デフォルト: 1024) 縮小・拡大が可能です。",
+    )
+    parser.add_argument(
+        "--add_stroke", action="store_true", help="SVGパスにアウトラインを追加します。"
+    )
+    parser.add_argument(
+        "--stroke_color",
+        type=str,
+        default="0,0,0",
+        help="ストロークの色をRGB形式で指定します ('R,G,B') (デフォルト: '0,0,0')",
+    )
+    parser.add_argument(
+        "--stroke_width",
+        type=float,
+        default=1.0,
+        help="ストロークの太さを指定します (デフォルト: 1.0)",
     )
 
     args = parser.parse_args()
@@ -127,6 +174,10 @@ def main():
         args.bg_color,
         args.apply_resizing,
         args.max_side_length,
+        args.gaussian_blur_ksize,
+        args.add_stroke,
+        args.stroke_color,
+        args.stroke_width,
     )
 
 

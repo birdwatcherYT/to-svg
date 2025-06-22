@@ -30,31 +30,33 @@ def contour_to_svg_path(contour, epsilon_factor=0.001):
 
 def preprocess_image(image_path: str, background_fill_color: tuple, apply_resizing: bool, max_side_length: int):
     """
-    画像を読み込み、オプションで縮小し、透明度を処理します。
-
-    Args:
-        image_path (str): 入力画像ファイルへのパス。
-        background_fill_color (tuple): 透明な領域の背景色を表すRGBタプル。
-        apply_resizing (bool): 処理前に画像を縮小するかどうか。
-        max_side_length (int): 画像を縮小する場合の最大辺の長さ (px)。
-
-    Returns:
-        numpy.ndarray: 前処理された3チャンネルのBGR画像。
+    画像を読み込み、透明度を処理し、必要に応じてリサイズします。
     """
     img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
     if img is None:
         print(f"エラー: {image_path} から画像を読み込めませんでした")
         return None
 
-    # 画像縮小を適用
+    # 画像サイズ調整を適用
     if apply_resizing and max_side_length > 0:
         h_orig, w_orig = img.shape[:2]
-        if max(h_orig, w_orig) > max_side_length:
-            scaling_factor = max_side_length / max(h_orig, w_orig)
+        
+        # 現在の画像の最も長い辺の長さを計算
+        current_max_side = max(h_orig, w_orig)
+
+        # 指定されたmax_side_lengthに合わせて画像をリサイズ
+        # 縮小の場合も拡大の場合も同じロジックで対応
+        if current_max_side != max_side_length:
+            scaling_factor = max_side_length / current_max_side
             new_w = int(w_orig * scaling_factor)
             new_h = int(h_orig * scaling_factor)
-            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            print(f"画像を {w_orig}x{h_orig} から {new_w}x{new_h} に縮小しました。")
+            
+            # 拡大の場合はcv2.INTER_LINEARまたはcv2.INTER_CUBIC、縮小の場合はcv2.INTER_AREAが適している
+            # ここでは汎用的にcv2.INTER_LINEARを使用するか、
+            # もしくは拡大と縮小で補間方法を切り替えることも可能
+            # 今回はシンプルにINTER_LINEARを使用します。
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            print(f"画像を {w_orig}x{h_orig} から {new_w}x{new_h} にリサイズしました。")
 
     # 透明なPNGのアルファチャンネルを処理します
     if img.shape[2] == 4: # 画像が4チャンネル（BGRA）の場合
@@ -65,17 +67,18 @@ def preprocess_image(image_path: str, background_fill_color: tuple, apply_resizi
         
         # 指定された背景塗りつぶし色を使用します（OpenCV用にBGRに変換）
         bg_b, bg_g, bg_r = background_fill_color # RGBタプルを展開します
-        background_color_bgr = (bg_b, bg_g, bg_r) # NumPy配列用にBGRに変換します
+        background_color_bgr = (bg_r, bg_g, bg_b) # OpenCVはBGR順
+
+        # 背景画像を作成します
+        background = np.full_like(img_3_channel, background_color_bgr)
         
-        background_layer = np.full(img_3_channel.shape, background_color_bgr, dtype=np.uint8)
-        
-        # アルファチャンネルをブレンディング用に[0, 1]に正規化します
+        # アルファチャンネルを正規化してマスクとして使用します
         alpha_normalized = a / 255.0
-        alpha_normalized = cv2.merge((alpha_normalized, alpha_normalized, alpha_normalized))
+        alpha_3_channel = cv2.merge((alpha_normalized, alpha_normalized, alpha_normalized))
         
-        # 指定された背景色と画像をブレンドします
-        img_processed = np.uint8(img_3_channel * alpha_normalized + background_layer * (1 - alpha_normalized))
-    else: # 画像がすでに3チャンネル（BGR）の場合
-        img_processed = img.copy()
-    
-    return img_processed
+        # 前景と背景をブレンドします
+        img_blended = (img_3_channel * alpha_3_channel).astype(np.uint8) + \
+                      (background * (1 - alpha_3_channel)).astype(np.uint8)
+        return img_blended
+    else: # 3チャンネル画像（BGR）の場合、そのまま返します
+        return img
